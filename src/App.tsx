@@ -21,11 +21,11 @@ import {
   setDoc,
   updateDoc
 } from "@firebase/firestore";
-import { auth, db, firebaseEnabled, googleProvider } from "./firebase";
+import { httpsCallable } from "@firebase/functions";
+import { auth, db, firebaseEnabled, functions, googleProvider } from "./firebase";
 
 const site = {
-  name: "A Moving Service",
-  stripeDepositLink: import.meta.env.VITE_STRIPE_DEPOSIT_PAYMENT_LINK?.trim() ?? ""
+  name: "A Moving Service"
 };
 const HOURLY_RATE_CENTS = 12_500;
 const DEPOSIT_CENTS = 25_000;
@@ -107,8 +107,7 @@ function MovePage({ user, booking }: { user: User | null; booking: boolean }) {
   useEffect(() => setData((current) => ({ ...current, fullName: current.fullName || user?.displayName || "", email: current.email || user?.email || "" })), [user]);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!auth || !db || !firebaseEnabled) { setStatus("The secure customer service is being connected. Please try again shortly."); return; }
-    if (booking && !site.stripeDepositLink) { setStatus("The secure Stripe deposit checkout is being activated. Your move details have not been submitted or charged."); return; }
+    if (!auth || !db || !firebaseEnabled || (booking && !functions)) { setStatus("The secure customer service is being connected. Please try again shortly."); return; }
     setSaving(true); setStatus("");
     try {
       const activeUser = user ?? await createCustomerAccount(data);
@@ -120,14 +119,15 @@ function MovePage({ user, booking }: { user: User | null; booking: boolean }) {
         window.location.assign("/account?notice=quote-saved");
       } else {
         const record = await addDoc(collection(db, "customers", activeUser.uid, "bookingRequests"), { ...common, status: "awaiting_payment", paymentStatus: "unpaid", arrivalWindow: data.arrivalWindow, hourlyRateCents: HOURLY_RATE_CENTS, depositCents: DEPOSIT_CENTS, updatedAt: serverTimestamp() });
-        window.sessionStorage.setItem("pendingBookingId", record.id);
-        window.location.assign(site.stripeDepositLink);
+        const checkout = httpsCallable<{ bookingId: string }, { checkoutUrl: string }>(functions!, "createCheckoutSession");
+        const checkoutResult = await checkout({ bookingId: record.id });
+        window.location.assign(checkoutResult.data.checkoutUrl);
       }
     } catch (error) { setStatus(errorMessage(error)); setSaving(false); }
   }
   const title = booking ? "Reserve your starting time." : "Tell us what your move needs.";
   const description = booking ? <><strong>{hourlyRate}/hour</strong> with a <strong>{deposit} two-hour booking deposit</strong>, credited toward your final bill.</> : <>We’ll create a private account for you, save your request, and use your preferred time to schedule a call.</>;
-  return <><Header user={user} /><main className="form-page shell" id="main-content"><a className="back-link" href="/"><span>←</span> Back home</a><div className="form-page__intro"><p className="eyebrow">{booking ? "Book a move" : "Get a quote"}</p><h1>{title}</h1><p>{description}</p>{booking && <p className="form-page__hint">Fully refundable with 48+ hours’ notice; nonrefundable inside 48 hours.</p>}{!user && <p className="form-page__hint">Already have an account? <a href={`/login?next=${booking ? "book" : "quote"}`}>Sign in</a>.</p>}</div><form className="customer-form" onSubmit={submit}><MoveFields booking={booking} data={data} setData={setData} /><AccountPassword data={data} setData={setData} user={user} /><div className="form-footer form-footer--page"><p>{booking ? `After review, you will continue to Stripe’s secure checkout to pay the ${deposit} deposit. Your booking is not confirmed until Stripe confirms payment.` : "We use these details to prepare your quote and call. Your account keeps them private."}</p><button className="button button-primary" disabled={saving} type="submit">{saving ? "Saving your request…" : booking ? `Continue to ${deposit} payment` : "Save request & book a call"} <ArrowUpRight /></button></div>{status && <p className="form-status form-status--page" role="alert">{status}</p>}</form></main><Footer /></>;
+  return <><Header user={user} /><main className="form-page shell" id="main-content"><a className="back-link" href="/"><span>←</span> Back home</a><div className="form-page__intro"><p className="eyebrow">{booking ? "Book a move" : "Get a quote"}</p><h1>{title}</h1><p>{description}</p>{booking && <p className="form-page__hint">Fully refundable with 48+ hours’ notice; nonrefundable inside 48 hours.</p>}{!user && <p className="form-page__hint">Already have an account? <a href={`/login?next=${booking ? "book" : "quote"}`}>Sign in</a>.</p>}</div><form className="customer-form" onSubmit={submit}><MoveFields booking={booking} data={data} setData={setData} /><AccountPassword data={data} setData={setData} user={user} /><div className="form-footer form-footer--page"><p>{booking ? `You will continue to Stripe’s secure checkout to pay the ${deposit} deposit. Payment places your move in pending availability approval; it is not an automatic confirmation.` : "We use these details to prepare your quote and call. Your account keeps them private."}</p><button className="button button-primary" disabled={saving} type="submit">{saving ? "Saving your request…" : booking ? `Continue to ${deposit} payment` : "Save request & book a call"} <ArrowUpRight /></button></div>{status && <p className="form-status form-status--page" role="alert">{status}</p>}</form></main><Footer /></>;
 }
 
 function Login({ user }: { user: User | null }) {
@@ -144,7 +144,8 @@ function Account({ user }: { user: User | null }) {
   if (!user) return <Login user={user} />;
   const notice = new URLSearchParams(window.location.search).get("notice");
   const printDate = (item: RecordItem) => item.moveDate?.toDate?.().toLocaleDateString() ?? "Move date pending";
-  return <><Header user={user} /><main className="account-page shell" id="main-content"><div className="account-heading"><p className="eyebrow">Customer account</p><h1>Your move details, in one place.</h1><p>Signed in as <strong>{user.email}</strong>.</p>{!user.emailVerified && <div className="verification-note"><strong>Verify your email before paying a booking deposit.</strong><button type="button" onClick={() => sendEmailVerification(user).then(() => setStatus("Verification email sent. Check your inbox, then refresh this page.")).catch(() => setStatus("We could not send a verification email. Please try again later."))}>Send verification email</button></div>}{notice === "quote-saved" && <p className="account-success">Your quote request was saved. We’ll use your preferred call window to follow up.</p>}</div><div className="account-actions"><a className="button button-primary" href="/book">Book a move <ArrowUpRight /></a><a className="button button-outline" href="/quote">Request another quote</a><button className="text-button" type="button" onClick={() => auth && signOut(auth).then(() => window.location.assign("/"))}>Sign out</button></div><section className="account-section"><h2>Quote requests</h2>{quotes.length ? <ul className="record-list">{quotes.map((item) => <li key={item.id}><strong>{printDate(item)}</strong><span>{item.status ?? "submitted"}</span></li>)}</ul> : <p>You have not submitted a quote request yet.</p>}</section><section className="account-section"><h2>Bookings</h2>{bookings.length ? <ul className="record-list">{bookings.map((item) => <li key={item.id}><strong>{printDate(item)}</strong><span>{item.paymentStatus === "paid" ? "Deposit paid" : "Awaiting payment"}</span></li>)}</ul> : <p>You have not started a booking yet.</p>}</section>{status && <p className="form-status form-status--page" role="status">{status}</p>}</main><Footer /></>;
+  const bookingLabel = (item: RecordItem) => item.paymentStatus === "paid" ? "Deposit paid — pending approval" : item.paymentStatus === "expired" ? "Payment link expired" : "Awaiting payment";
+  return <><Header user={user} /><main className="account-page shell" id="main-content"><div className="account-heading"><p className="eyebrow">Customer account</p><h1>Your move details, in one place.</h1><p>Signed in as <strong>{user.email}</strong>.</p>{!user.emailVerified && <div className="verification-note"><strong>Verify your email before paying a booking deposit.</strong><button type="button" onClick={() => sendEmailVerification(user).then(() => setStatus("Verification email sent. Check your inbox, then refresh this page.")).catch(() => setStatus("We could not send a verification email. Please try again later."))}>Send verification email</button></div>}{notice === "quote-saved" && <p className="account-success">Your quote request was saved. We’ll use your preferred call window to follow up.</p>}{new URLSearchParams(window.location.search).get("checkout") === "success" && <p className="account-success">Stripe is confirming your deposit. Your move remains pending availability approval.</p>}</div><div className="account-actions"><a className="button button-primary" href="/book">Book a move <ArrowUpRight /></a><a className="button button-outline" href="/quote">Request another quote</a><button className="text-button" type="button" onClick={() => auth && signOut(auth).then(() => window.location.assign("/"))}>Sign out</button></div><section className="account-section"><h2>Quote requests</h2>{quotes.length ? <ul className="record-list">{quotes.map((item) => <li key={item.id}><strong>{printDate(item)}</strong><span>{item.status ?? "submitted"}</span></li>)}</ul> : <p>You have not submitted a quote request yet.</p>}</section><section className="account-section"><h2>Bookings</h2>{bookings.length ? <ul className="record-list">{bookings.map((item) => <li key={item.id}><strong>{printDate(item)}</strong><span>{bookingLabel(item)}</span></li>)}</ul> : <p>You have not started a booking yet.</p>}</section>{status && <p className="form-status form-status--page" role="status">{status}</p>}</main><Footer /></>;
 }
 
 function Admin() {

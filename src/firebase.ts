@@ -7,6 +7,7 @@ import {
   type Auth
 } from "@firebase/auth";
 import { getFirestore, type Firestore } from "@firebase/firestore";
+import { getFunctions, type Functions } from "@firebase/functions";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -27,6 +28,7 @@ const hasFirebaseConfiguration = Boolean(
 let app: FirebaseApp | undefined;
 let auth: Auth | undefined;
 let db: Firestore | undefined;
+let functions: Functions | undefined;
 let googleProvider: GoogleAuthProvider | undefined;
 
 if (hasFirebaseConfiguration) {
@@ -36,9 +38,10 @@ if (hasFirebaseConfiguration) {
   // out. Firestore Rules, not browser persistence, protect private records.
   void setPersistence(auth, browserLocalPersistence);
   db = getFirestore(app);
+  functions = getFunctions(app, "us-west2");
   googleProvider = new GoogleAuthProvider();
   googleProvider.setCustomParameters({ prompt: "select_account" });
 }
 
-export { auth, db, googleProvider };
+export { auth, db, functions, googleProvider };
 export const firebaseEnabled = hasFirebaseConfiguration;

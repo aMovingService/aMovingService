@@ -38,7 +38,7 @@ The Firebase project alias is configured in .firebaserc. Build before
 deploying:
 
     npm run build
-    firebase deploy --only firestore,auth,hosting
+    npx -y firebase-tools@latest deploy --only firestore,auth,hosting
 
 The deployed rules live in firestore.rules. A future trusted intake service
 must validate all lead fields, rate-limit requests, perform bot protection, and
@@ -57,14 +57,29 @@ The pricing policy is $125 per hour, with a $250 two-hour booking deposit.
 The deposit is credited to the final bill and is refundable with 48+ hours'
 notice.
 
-Do not put Stripe secret keys into a Vite variable or this repository. A public
-Stripe Payment Link may be placed in `VITE_STRIPE_DEPOSIT_PAYMENT_LINK` for
-navigation to Stripe Checkout, but production payment confirmation must use a
-trusted server endpoint and Stripe webhook. That endpoint should create a
-Checkout Session with the Firebase UID and booking ID in metadata, verify the
-webhook signature using its endpoint secret, and then update the booking with
-the Admin SDK. Firebase Functions or Cloud Run normally requires a
-billing-enabled Firebase project.
+The booking flow creates a fixed-price $250 Stripe Checkout Session on the
+server after the customer has verified their email. Its Stripe metadata contains
+the Firebase UID and booking ID; the browser cannot declare a booking paid.
+The signed Stripe webhook updates a successfully paid booking to
+`pending_availability_approval`. A paid deposit is never an automatic booking
+confirmation.
+
+Do not put Stripe secret keys into a Vite variable, `.env`, or source control.
+The server uses Firebase Functions secrets named `STRIPE_SECRET_KEY` and
+`STRIPE_WEBHOOK_SECRET`. Firebase Functions requires the project to be on the
+Blaze plan. After that approved upgrade, set secrets interactively in a trusted
+terminal, deploy Functions, create a live Stripe webhook endpoint for the
+deployed function URL, and then set the endpoint's signing secret. The webhook
+endpoint must receive `checkout.session.completed` and
+`checkout.session.expired` events.
+
+The Function runs in `us-west2`; its production webhook URL is:
+
+    https://us-west2-amovingservice-web-2026.cloudfunctions.net/stripeWebhook
+
+Never paste either secret into chat, a Git commit, or a browser environment
+file. Do not deploy the customer booking UI to Hosting until the Function and
+the signed webhook are both live.
 
 ## Required business inputs before enabling live lead delivery
 

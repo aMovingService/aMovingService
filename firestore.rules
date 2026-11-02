@@ -45,8 +45,9 @@ service cloud.firestore {
     // Subcollection: customers/{uid}/bookingRequests
     // Immutable pre-checkout requests. A verified-email customer can create an
     // `awaiting_payment` / `unpaid` request only at the fixed $125/hour and
-    // $250 deposit values. Browser updates are never permitted; a trusted
-    // Stripe webhook uses the Admin SDK to set any later payment outcome.
+    // $250 deposit values. Browser updates are never permitted. A trusted
+    // Stripe webhook uses the Admin SDK to add server-only checkout/payment
+    // metadata and to set the later payment outcome.
     // ===============================================================
 
     // ===============================================================
