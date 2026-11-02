@@ -19,7 +19,7 @@ requests remain `awaiting_payment`; a browser may never mark a deposit paid.
 
 ## Local development
 
-1. Use Node 20 or later.
+1. Use Node 22 or later. Firebase Functions deploy on Node 22.
 2. Copy .env.example to .env, then fill in the public Firebase Web App
    identifiers and only owner-approved business contact values.
 3. Install packages and run the app:
