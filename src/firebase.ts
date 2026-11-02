@@ -1,11 +1,12 @@
 import { getApp, getApps, initializeApp, type FirebaseApp } from "@firebase/app";
 import {
-  browserSessionPersistence,
+  browserLocalPersistence,
   getAuth,
   GoogleAuthProvider,
   setPersistence,
   type Auth
 } from "@firebase/auth";
+import { getFirestore, type Firestore } from "@firebase/firestore";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -25,17 +26,19 @@ const hasFirebaseConfiguration = Boolean(
 
 let app: FirebaseApp | undefined;
 let auth: Auth | undefined;
+let db: Firestore | undefined;
 let googleProvider: GoogleAuthProvider | undefined;
 
 if (hasFirebaseConfiguration) {
   app = getApps().length ? getApp() : initializeApp(firebaseConfig);
   auth = getAuth(app);
-  // The staff portal is intentionally session-only. It does not cache customer
-  // records in the browser, and closing the browser ends the auth session.
-  void setPersistence(auth, browserSessionPersistence);
+  // Customer accounts remain available on the device until the customer signs
+  // out. Firestore Rules, not browser persistence, protect private records.
+  void setPersistence(auth, browserLocalPersistence);
+  db = getFirestore(app);
   googleProvider = new GoogleAuthProvider();
   googleProvider.setCustomParameters({ prompt: "select_account" });
 }
 
-export { auth, googleProvider };
+export { auth, db, googleProvider };
 export const firebaseEnabled = hasFirebaseConfiguration;

@@ -29,6 +29,24 @@ service cloud.firestore {
     // A future trusted backend will create leads with the Admin SDK. Admin SDK
     // calls bypass these client rules and must validate its own input. There
     // are deliberately no client-created user or staff-role documents.
+    //
+    // Collection: customers
+    // Document ID: Firebase Auth UID
+    // Private profile fields: schemaVersion (1), uid (immutable), fullName
+    // (1-120), email (immutable and equal to Auth email), phone (7-32),
+    // createdAt (immutable), updatedAt. Only the customer and claimed staff
+    // can read it.
+    //
+    // Subcollection: customers/{uid}/quotes
+    // Immutable customer quote/call requests. A customer creates a document
+    // with their own identity, submitted status, a valid move date, move size,
+    // locations, call window, and bounded notes. Customer and staff can read.
+    //
+    // Subcollection: customers/{uid}/bookingRequests
+    // Immutable pre-checkout requests. A verified-email customer can create an
+    // `awaiting_payment` / `unpaid` request only at the fixed $125/hour and
+    // $250 deposit values. Browser updates are never permitted; a trusted
+    // Stripe webhook uses the Admin SDK to set any later payment outcome.
     // ===============================================================
 
     // ===============================================================
@@ -78,6 +96,27 @@ service cloud.firestore {
 
     function validTimestampOrNull(value) {
       return value == null || value is timestamp;
+    }
+
+    function validCustomerEmail(value) {
+      return validEmail(value)
+        && request.auth.token.email is string
+        && value == request.auth.token.email;
+    }
+
+    function validMoveSize(value) {
+      return value in [
+        'studio', 'one-bedroom', 'two-bedroom', 'three-bedroom',
+        'four-plus', 'commercial', 'unknown'
+      ];
+    }
+
+    function validCallWindow(value) {
+      return value in ['morning', 'midday', 'afternoon', 'evening'];
+    }
+
+    function validArrivalWindow(value) {
+      return value in ['morning', 'midday', 'afternoon'];
     }
 
     // A Firebase Authentication custom claim, issued by a privileged trusted
@@ -167,6 +206,89 @@ service cloud.firestore {
         && validAssignment(request.resource.data, resource.data);
     }
 
+    function customerFields() {
+      return [
+        'schemaVersion', 'uid', 'fullName', 'email', 'phone',
+        'createdAt', 'updatedAt'
+      ];
+    }
+
+    // Domain validator for both profile create and update.
+    function isValidCustomer(data) {
+      return hasRequiredFields(data, customerFields())
+        && hasOnlyAllowedFields(data, customerFields())
+        && data.schemaVersion is int
+        && data.schemaVersion == 1
+        && validString(data.uid, 1, 128)
+        && validString(data.fullName, 1, 120)
+        && validCustomerEmail(data.email)
+        && validString(data.phone, 7, 32)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function quoteFields() {
+      return [
+        'schemaVersion', 'ownerUid', 'status', 'fullName', 'email', 'phone',
+        'moveDate', 'moveSize', 'origin', 'destination', 'details',
+        'preferredCallWindow', 'submittedAt', 'createdAt'
+      ];
+    }
+
+    // Domain validator for immutable customer quote/call requests.
+    function isValidQuote(data, userId) {
+      return hasRequiredFields(data, quoteFields())
+        && hasOnlyAllowedFields(data, quoteFields())
+        && data.schemaVersion is int
+        && data.schemaVersion == 1
+        && data.ownerUid == userId
+        && data.status == 'submitted'
+        && validString(data.fullName, 1, 120)
+        && validCustomerEmail(data.email)
+        && validString(data.phone, 7, 32)
+        && data.moveDate is timestamp
+        && validMoveSize(data.moveSize)
+        && validString(data.origin, 1, 160)
+        && validString(data.destination, 1, 160)
+        && validString(data.details, 0, 4000)
+        && validCallWindow(data.preferredCallWindow)
+        && data.submittedAt == request.time
+        && data.createdAt == request.time;
+    }
+
+    function bookingFields() {
+      return [
+        'schemaVersion', 'ownerUid', 'status', 'paymentStatus', 'fullName',
+        'email', 'phone', 'moveDate', 'arrivalWindow', 'moveSize', 'origin',
+        'destination', 'details', 'hourlyRateCents', 'depositCents',
+        'createdAt', 'updatedAt'
+      ];
+    }
+
+    // Domain validator for immutable, not-yet-paid browser booking requests.
+    function isValidBookingRequest(data, userId) {
+      return hasRequiredFields(data, bookingFields())
+        && hasOnlyAllowedFields(data, bookingFields())
+        && data.schemaVersion is int
+        && data.schemaVersion == 1
+        && data.ownerUid == userId
+        && data.status == 'awaiting_payment'
+        && data.paymentStatus == 'unpaid'
+        && validString(data.fullName, 1, 120)
+        && validCustomerEmail(data.email)
+        && validString(data.phone, 7, 32)
+        && data.moveDate is timestamp
+        && validArrivalWindow(data.arrivalWindow)
+        && validMoveSize(data.moveSize)
+        && validString(data.origin, 1, 160)
+        && validString(data.destination, 1, 160)
+        && validString(data.details, 0, 4000)
+        && data.hourlyRateCents == 12500
+        && data.depositCents == 25000
+        && data.createdAt == request.time
+        && data.updatedAt == request.time;
+    }
+
     // ===============================================================
     // Access Rules
     // ===============================================================
@@ -189,6 +311,46 @@ service cloud.firestore {
       // Lead deletion is a privileged retention operation and not a browser
       // capability.
       allow delete: if false;
+    }
+
+    match /customers/{userId} {
+      // Profiles contain PII. Another customer can never read or enumerate
+      // them; claimed staff need access to run the move workflow.
+      allow read: if isOwner(userId) || isStaff();
+
+      allow create: if isOwner(userId)
+        && isValidCustomer(request.resource.data)
+        && request.resource.data.uid == userId
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+
+      allow update: if isOwner(userId)
+        && isValidCustomer(request.resource.data)
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time;
+
+      allow delete: if false;
+    }
+
+    match /customers/{userId}/quotes/{quoteId} {
+      allow read: if isOwner(userId) || isStaff();
+      allow create: if isOwner(userId)
+        && isValidQuote(request.resource.data, userId);
+      // Quotes are immutable from the browser. Staff workflow writes should
+      // use the trusted backend or the separate staff-only leads collection.
+      allow update, delete: if false;
+    }
+
+    match /customers/{userId}/bookingRequests/{bookingId} {
+      allow read: if isOwner(userId) || isStaff();
+      allow create: if isOwner(userId)
+        && request.auth.token.email_verified == true
+        && isValidBookingRequest(request.resource.data, userId);
+      // Payment outcomes must be set by a Stripe-verified trusted backend,
+      // never by the client that initiated checkout.
+      allow update, delete: if false;
     }
 
     // Default deny includes every future collection and subcollection.

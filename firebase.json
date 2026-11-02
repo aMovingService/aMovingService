@@ -5,6 +5,7 @@
   },
   "auth": {
     "providers": {
+      "emailPassword": true,
       "googleSignIn": {
         "oAuthBrandDisplayName": "A Moving Service",
         "supportEmail": "w3develops@gmail.com"
