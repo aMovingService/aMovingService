@@ -1,4 +1,5 @@
 import { initializeApp } from "firebase-admin/app";
+import { getAuth } from "firebase-admin/auth";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { defineSecret } from "firebase-functions/params";
 import { HttpsError, onCall, onRequest } from "firebase-functions/v2/https";
@@ -11,11 +12,13 @@ const REGION = "us-west2";
 const SITE_URL = "https://amovingservice.com";
 const HOURLY_RATE_CENTS = 12_500;
 const DEPOSIT_CENTS = 25_000;
+const INITIAL_STAFF_EMAIL = "w3develops@gmail.com";
 const stripeSecret = defineSecret("STRIPE_SECRET_KEY");
 const stripeWebhookSecret = defineSecret("STRIPE_WEBHOOK_SECRET");
 const db = getFirestore();
 
 type CheckoutInput = { bookingId?: unknown };
+type ReviewInput = { uid?: unknown; bookingId?: unknown; decision?: unknown };
 
 function stripeClient(secret: string) {
   return new Stripe(secret);
@@ -36,6 +39,62 @@ function checkoutIntegrationIdentifier(bookingId: string) {
 function verifiedEmail(request: { auth?: { token: Record<string, unknown>; uid: string } }) {
   return request.auth?.token.email_verified === true && typeof request.auth.token.email === "string";
 }
+
+function isStaff(request: { auth?: { token: Record<string, unknown>; uid: string } }) {
+  return verifiedEmail(request) && request.auth?.token.staff === true;
+}
+
+export const bootstrapStaffAccess = onCall({ region: REGION }, async (request) => {
+  if (!request.auth || !verifiedEmail(request)) {
+    throw new HttpsError("unauthenticated", "Sign in with a verified Google account first.");
+  }
+
+  const email = (request.auth.token.email as string).toLowerCase();
+  if (email !== INITIAL_STAFF_EMAIL) {
+    throw new HttpsError("permission-denied", "This account is not approved for staff access.");
+  }
+
+  const user = await getAuth().getUser(request.auth.uid);
+  if (user.email?.toLowerCase() !== INITIAL_STAFF_EMAIL || !user.emailVerified) {
+    throw new HttpsError("permission-denied", "This account has not completed email verification.");
+  }
+
+  await getAuth().setCustomUserClaims(user.uid, { ...user.customClaims, staff: true });
+  return { staff: true };
+});
+
+export const reviewBookingAvailability = onCall({ region: REGION }, async (request) => {
+  if (!request.auth || !isStaff(request)) {
+    throw new HttpsError("permission-denied", "Staff access is required.");
+  }
+
+  const { uid, bookingId, decision } = request.data as ReviewInput;
+  if (
+    typeof uid !== "string" ||
+    !/^[A-Za-z0-9_-]{1,128}$/.test(uid) ||
+    typeof bookingId !== "string" ||
+    !/^[A-Za-z0-9_-]{20,}$/.test(bookingId) ||
+    (decision !== "approved" && decision !== "declined")
+  ) {
+    throw new HttpsError("invalid-argument", "A valid booking and availability decision are required.");
+  }
+
+  const reference = bookingRef(uid, bookingId);
+  const snapshot = await reference.get();
+  if (!snapshot.exists || snapshot.data()?.status !== "pending_availability_approval") {
+    throw new HttpsError("failed-precondition", "Only paid bookings awaiting approval can be reviewed.");
+  }
+
+  await reference.update({
+    status: decision === "approved" ? "confirmed" : "availability_declined",
+    availabilityDecision: decision,
+    availabilityReviewedByUid: request.auth.uid,
+    availabilityReviewedAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp()
+  });
+
+  return { status: decision === "approved" ? "confirmed" : "availability_declined" };
+});
 
 export const createCheckoutSession = onCall(
   { region: REGION, secrets: [stripeSecret] },

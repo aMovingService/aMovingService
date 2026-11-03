@@ -12,6 +12,7 @@ import {
 import {
   addDoc,
   collection,
+  collectionGroup,
   doc,
   getDoc,
   onSnapshot,
@@ -19,7 +20,8 @@ import {
   query,
   serverTimestamp,
   setDoc,
-  updateDoc
+  updateDoc,
+  where
 } from "@firebase/firestore";
 import { httpsCallable } from "@firebase/functions";
 import { auth, db, firebaseEnabled, functions, googleProvider } from "./firebase";
@@ -40,6 +42,7 @@ type MoveForm = {
   callWindow: string; arrivalWindow: string;
 };
 type RecordItem = { id: string; status?: string; paymentStatus?: string; moveDate?: { toDate?: () => Date } };
+type StaffBooking = RecordItem & { ownerUid: string; fullName?: string; origin?: string; destination?: string; arrivalWindow?: string };
 const blankMove: MoveForm = { fullName: "", email: "", phone: "", password: "", moveDate: "", moveSize: "unknown", origin: "", destination: "", details: "", callWindow: "", arrivalWindow: "" };
 
 function ArrowUpRight() { return <svg aria-hidden="true" viewBox="0 0 24 24" className="icon icon-arrow"><path d="M5 19 19 5M8 5h11v11" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" /></svg>; }
@@ -144,14 +147,43 @@ function Account({ user }: { user: User | null }) {
   if (!user) return <Login user={user} />;
   const notice = new URLSearchParams(window.location.search).get("notice");
   const printDate = (item: RecordItem) => item.moveDate?.toDate?.().toLocaleDateString() ?? "Move date pending";
-  const bookingLabel = (item: RecordItem) => item.paymentStatus === "paid" ? "Deposit paid — pending approval" : item.paymentStatus === "expired" ? "Payment link expired" : item.paymentStatus === "failed" ? "Payment unsuccessful — please try again" : "Awaiting payment";
+  const bookingLabel = (item: RecordItem) => item.status === "confirmed" ? "Availability approved" : item.status === "availability_declined" ? "Availability unavailable" : item.paymentStatus === "paid" ? "Deposit paid — pending approval" : item.paymentStatus === "expired" ? "Payment link expired" : item.paymentStatus === "failed" ? "Payment unsuccessful — please try again" : "Awaiting payment";
   return <><Header user={user} /><main className="account-page shell" id="main-content"><div className="account-heading"><p className="eyebrow">Customer account</p><h1>Your move details, in one place.</h1><p>Signed in as <strong>{user.email}</strong>.</p>{!user.emailVerified && <div className="verification-note"><strong>Verify your email before paying a booking deposit.</strong><button type="button" onClick={() => sendEmailVerification(user).then(() => setStatus("Verification email sent. Check your inbox, then refresh this page.")).catch(() => setStatus("We could not send a verification email. Please try again later."))}>Send verification email</button></div>}{notice === "quote-saved" && <p className="account-success">Your quote request was saved. We’ll use your preferred call window to follow up.</p>}{new URLSearchParams(window.location.search).get("checkout") === "success" && <p className="account-success">Stripe is confirming your deposit. Your move remains pending availability approval.</p>}</div><div className="account-actions"><a className="button button-primary" href="/book">Book a move <ArrowUpRight /></a><a className="button button-outline" href="/quote">Request another quote</a><button className="text-button" type="button" onClick={() => auth && signOut(auth).then(() => window.location.assign("/"))}>Sign out</button></div><section className="account-section"><h2>Quote requests</h2>{quotes.length ? <ul className="record-list">{quotes.map((item) => <li key={item.id}><strong>{printDate(item)}</strong><span>{item.status ?? "submitted"}</span></li>)}</ul> : <p>You have not submitted a quote request yet.</p>}</section><section className="account-section"><h2>Bookings</h2>{bookings.length ? <ul className="record-list">{bookings.map((item) => <li key={item.id}><strong>{printDate(item)}</strong><span>{bookingLabel(item)}</span></li>)}</ul> : <p>You have not started a booking yet.</p>}</section>{status && <p className="form-status form-status--page" role="status">{status}</p>}</main><Footer /></>;
 }
 
 function Admin() {
-  const user = useUser(); const [error, setError] = useState("");
+  const user = useUser();
+  const [error, setError] = useState("");
+  const [isStaffMember, setIsStaffMember] = useState(false);
+  const [activating, setActivating] = useState(false);
+  const [bookings, setBookings] = useState<StaffBooking[]>([]);
+
+  useEffect(() => {
+    if (!user) { setIsStaffMember(false); return; }
+    void user.getIdTokenResult().then((token) => setIsStaffMember(token.claims.staff === true)).catch(() => setIsStaffMember(false));
+  }, [user]);
+
+  useEffect(() => {
+    if (!isStaffMember || !db) return;
+    return onSnapshot(query(collectionGroup(db, "bookingRequests"), where("status", "==", "pending_availability_approval")), (snapshot) => {
+      setBookings(snapshot.docs.map((item) => ({ id: item.id, ...item.data() } as StaffBooking)));
+    }, () => setError("We could not load pending bookings."));
+  }, [isStaffMember]);
+
   async function login() { if (!auth || !googleProvider) return; try { await signInWithPopup(auth, googleProvider); } catch { setError("Sign-in could not be completed. Confirm that this domain is authorized in Firebase Authentication."); } }
-  return <main className="admin-page"><div className="admin-card"><Brand /><p className="eyebrow">Staff portal</p><h1>Lead workspace</h1>{!firebaseEnabled ? <p>Firebase configuration is being connected. Staff sign-in will be available shortly.</p> : user ? <><p>Signed in as <strong>{user.email ?? "staff member"}</strong>.</p><p>Lead access is intentionally locked until the secure staff role is activated.</p><button className="button button-primary" onClick={() => auth && signOut(auth)} type="button">Sign out</button></> : <><p>Use an approved Google account to access staff tools.</p><button className="button button-primary" onClick={login} type="button">Continue with Google <ArrowUpRight /></button></>}{error && <p className="form-status form-status--dark" role="alert">{error}</p>}<a className="text-link" href="/">Return to the site <ArrowUpRight /></a></div></main>;
+  async function activateStaff() {
+    if (!user || !functions) return;
+    setActivating(true); setError("");
+    try { await httpsCallable(functions, "bootstrapStaffAccess")({}); await user.getIdToken(true); setIsStaffMember(true); } catch { setError("Staff access could not be activated for this account."); } finally { setActivating(false); }
+  }
+  async function review(booking: StaffBooking, decision: "approved" | "declined") {
+    if (!functions) return;
+    setError("");
+    try { await httpsCallable(functions, "reviewBookingAvailability")({ uid: booking.ownerUid, bookingId: booking.id, decision }); } catch { setError("The availability decision could not be saved. Please try again."); }
+  }
+  const displayDate = (booking: StaffBooking) => booking.moveDate?.toDate?.().toLocaleDateString() ?? "Move date pending";
+
+  return <main className="admin-page"><div className={`admin-card${isStaffMember ? " admin-card--wide" : ""}`}><Brand /><p className="eyebrow">Staff portal</p><h1>Move approvals</h1>{!firebaseEnabled ? <p>Firebase configuration is being connected. Staff sign-in will be available shortly.</p> : user ? <><p>Signed in as <strong>{user.email ?? "staff member"}</strong>.</p>{!isStaffMember ? <><p>Activate the secure staff role for this approved account, then review paid bookings here.</p><button className="button button-primary" disabled={activating} onClick={activateStaff} type="button">{activating ? "Activating staff access…" : "Activate staff access"}</button></> : <section className="admin-bookings"><h2>Pending availability approval</h2>{bookings.length ? <ul className="record-list">{bookings.map((booking) => <li key={booking.id}><div><strong>{booking.fullName ?? "Customer"} · {displayDate(booking)}</strong><small>{booking.origin ?? "Origin"} → {booking.destination ?? "Destination"} · {booking.arrivalWindow ?? "Arrival window pending"}</small></div><span className="admin-booking-actions"><button className="button button-small button-primary" onClick={() => review(booking, "approved")} type="button">Approve</button><button className="button button-small button-outline" onClick={() => review(booking, "declined")} type="button">Decline</button></span></li>)}</ul> : <p>No paid bookings are awaiting review.</p>}</section>}<button className="text-button" onClick={() => auth && signOut(auth).then(() => window.location.assign("/"))} type="button">Sign out</button></> : <><p>Use the approved Google account to access staff tools.</p><button className="button button-primary" onClick={login} type="button">Continue with Google <ArrowUpRight /></button></>}{error && <p className="form-status form-status--dark" role="alert">{error}</p>}<a className="text-link" href="/">Return to the site <ArrowUpRight /></a></div></main>;
 }
 
 function App() {
