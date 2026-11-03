@@ -657,6 +657,12 @@ h2 {
 .auth-card label { display: grid; gap: 7px; color: rgba(16, 42, 67, 0.8); font-size: 12px; font-weight: 750; }
 .auth-card input { min-height: 47px; border: 1px solid rgba(16, 42, 67, 0.22); border-radius: 8px; padding: 12px 13px; background: #fff; color: #102a43; }
 .auth-card .button { margin-top: 7px; }
+.auth-switch { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; margin-top: 27px; padding: 4px; border-radius: 9px; background: #e9e5da; }
+.auth-switch button { min-height: 38px; border: 0; border-radius: 6px; background: transparent; color: rgba(16, 42, 67, 0.72); font: inherit; font-size: 13px; font-weight: 800; cursor: pointer; }
+.auth-switch button.is-active { background: #f8f6f0; color: #102a43; box-shadow: 0 1px 3px rgba(16, 42, 67, 0.12); }
+.auth-google { width: 100%; margin-top: 18px !important; justify-content: center; }
+.auth-divider { display: flex; align-items: center; gap: 12px; margin: 20px 0 -7px; color: rgba(16, 42, 67, 0.58); font-size: 11px; font-weight: 750; letter-spacing: 0.05em; text-transform: uppercase; }
+.auth-divider::before, .auth-divider::after { flex: 1; height: 1px; background: rgba(16, 42, 67, 0.13); content: ""; }
 
 .account-page { padding-top: clamp(55px, 8vw, 105px); padding-bottom: clamp(76px, 10vw, 138px); }
 .account-heading { max-width: 750px; }

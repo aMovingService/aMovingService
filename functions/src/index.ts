@@ -12,13 +12,14 @@ const REGION = "us-west2";
 const SITE_URL = "https://amovingservice.com";
 const HOURLY_RATE_CENTS = 12_500;
 const DEPOSIT_CENTS = 25_000;
-const INITIAL_STAFF_EMAIL = "w3develops@gmail.com";
+const INITIAL_ADMIN_EMAIL = "w3develops@gmail.com";
 const stripeSecret = defineSecret("STRIPE_SECRET_KEY");
 const stripeWebhookSecret = defineSecret("STRIPE_WEBHOOK_SECRET");
 const db = getFirestore();
 
 type CheckoutInput = { bookingId?: unknown };
 type ReviewInput = { uid?: unknown; bookingId?: unknown; decision?: unknown };
+type AccountRole = "admin" | "employee" | "customer";
 
 function stripeClient(secret: string) {
   return new Stripe(secret);
@@ -44,23 +45,74 @@ function isStaff(request: { auth?: { token: Record<string, unknown>; uid: string
   return verifiedEmail(request) && request.auth?.token.staff === true;
 }
 
+function storedRole(customClaims: Record<string, unknown> | undefined): AccountRole {
+  if (customClaims?.role === "admin" || customClaims?.role === "employee") return customClaims.role;
+  // Preserve previously issued staff access while migrating to named roles.
+  return customClaims?.staff === true ? "employee" : "customer";
+}
+
+async function recordAccount(user: Awaited<ReturnType<ReturnType<typeof getAuth>["getUser"]>>, role: AccountRole) {
+  const reference = db.collection("accountProfiles").doc(user.uid);
+  const existing = await reference.get();
+  await reference.set({
+    schemaVersion: 1,
+    uid: user.uid,
+    email: user.email?.toLowerCase() ?? null,
+    displayName: user.displayName ?? null,
+    role,
+    emailVerified: user.emailVerified,
+    updatedAt: FieldValue.serverTimestamp(),
+    ...(existing.exists ? {} : { createdAt: FieldValue.serverTimestamp() })
+  }, { merge: true });
+}
+
+// This runs after every successful website login. It creates a server-owned
+// Firestore account record for real users and grants elevated roles only to an
+// approved identity or to a role that a trusted admin process issued earlier.
+export const bootstrapAccountAccess = onCall({ region: REGION }, async (request) => {
+  if (!request.auth || !verifiedEmail(request)) {
+    throw new HttpsError("unauthenticated", "Sign in with a verified email address first.");
+  }
+
+  const user = await getAuth().getUser(request.auth.uid);
+  const email = user.email?.toLowerCase();
+  if (!email || !user.emailVerified) {
+    throw new HttpsError("permission-denied", "This account has not completed email verification.");
+  }
+
+  const role = email === INITIAL_ADMIN_EMAIL ? "admin" : storedRole(user.customClaims);
+  if (role !== "customer") {
+    await getAuth().setCustomUserClaims(user.uid, {
+      ...user.customClaims,
+      role,
+      staff: true
+    });
+  }
+
+  await recordAccount(user, role);
+  return { role, staff: role !== "customer" };
+});
+
+// Retained for existing signed-in staff sessions while the website moves to
+// the unified login flow above. New traffic uses bootstrapAccountAccess.
 export const bootstrapStaffAccess = onCall({ region: REGION }, async (request) => {
   if (!request.auth || !verifiedEmail(request)) {
-    throw new HttpsError("unauthenticated", "Sign in with a verified Google account first.");
+    throw new HttpsError("unauthenticated", "Sign in with a verified email address first.");
   }
 
   const email = (request.auth.token.email as string).toLowerCase();
-  if (email !== INITIAL_STAFF_EMAIL) {
+  if (email !== INITIAL_ADMIN_EMAIL) {
     throw new HttpsError("permission-denied", "This account is not approved for staff access.");
   }
 
   const user = await getAuth().getUser(request.auth.uid);
-  if (user.email?.toLowerCase() !== INITIAL_STAFF_EMAIL || !user.emailVerified) {
+  if (user.email?.toLowerCase() !== INITIAL_ADMIN_EMAIL || !user.emailVerified) {
     throw new HttpsError("permission-denied", "This account has not completed email verification.");
   }
 
-  await getAuth().setCustomUserClaims(user.uid, { ...user.customClaims, staff: true });
-  return { staff: true };
+  await getAuth().setCustomUserClaims(user.uid, { ...user.customClaims, role: "admin", staff: true });
+  await recordAccount(user, "admin");
+  return { role: "admin", staff: true };
 });
 
 export const reviewBookingAvailability = onCall({ region: REGION }, async (request) => {
