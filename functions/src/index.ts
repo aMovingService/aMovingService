@@ -2,6 +2,7 @@ import { initializeApp } from "firebase-admin/app";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { defineSecret } from "firebase-functions/params";
 import { HttpsError, onCall, onRequest } from "firebase-functions/v2/https";
+import { createHash } from "node:crypto";
 import Stripe from "stripe";
 
 initializeApp();
@@ -22,6 +23,14 @@ function stripeClient(secret: string) {
 
 function bookingRef(uid: string, bookingId: string) {
   return db.collection("customers").doc(uid).collection("bookingRequests").doc(bookingId);
+}
+
+function checkoutIntegrationIdentifier(bookingId: string) {
+  const suffix = Array.from(
+    createHash("sha256").update(bookingId).digest().subarray(0, 8),
+    (byte) => String.fromCharCode(97 + (byte % 26))
+  ).join("");
+  return `a_moving_service_${suffix}`;
 }
 
 function verifiedEmail(request: { auth?: { token: Record<string, unknown>; uid: string } }) {
@@ -62,6 +71,7 @@ export const createCheckoutSession = onCall(
     const session = await stripe.checkout.sessions.create(
       {
         mode: "payment",
+        integration_identifier: checkoutIntegrationIdentifier(bookingId),
         customer_email: request.auth.token.email as string,
         client_reference_id: bookingId,
         success_url: `${SITE_URL}/account?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
@@ -144,7 +154,11 @@ export const stripeWebhook = onRequest(
     }
 
     const reference = bookingRef(firebaseUid, bookingId);
-    if (event.type === "checkout.session.completed" && session.payment_status === "paid") {
+    if (
+      (event.type === "checkout.session.completed" ||
+        event.type === "checkout.session.async_payment_succeeded") &&
+      session.payment_status !== "unpaid"
+    ) {
       await reference.set({
         status: "pending_availability_approval",
         paymentStatus: "paid",
@@ -152,6 +166,16 @@ export const stripeWebhook = onRequest(
         stripePaymentIntentId: typeof session.payment_intent === "string" ? session.payment_intent : null,
         stripeEventId: event.id,
         paidAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp()
+      }, { merge: true });
+    }
+
+    if (event.type === "checkout.session.async_payment_failed") {
+      await reference.set({
+        status: "payment_failed",
+        paymentStatus: "failed",
+        stripeCheckoutSessionId: session.id,
+        stripeEventId: event.id,
         updatedAt: FieldValue.serverTimestamp()
       }, { merge: true });
     }

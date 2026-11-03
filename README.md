@@ -70,8 +70,9 @@ The server uses Firebase Functions secrets named `STRIPE_SECRET_KEY` and
 Blaze plan. After that approved upgrade, set secrets interactively in a trusted
 terminal, deploy Functions, create a live Stripe webhook endpoint for the
 deployed function URL, and then set the endpoint's signing secret. The webhook
-endpoint must receive `checkout.session.completed` and
-`checkout.session.expired` events.
+endpoint must receive `checkout.session.completed`,
+`checkout.session.async_payment_succeeded`,
+`checkout.session.async_payment_failed`, and `checkout.session.expired` events.
 
 The Function runs in `us-west2`; its production webhook URL is:
 
