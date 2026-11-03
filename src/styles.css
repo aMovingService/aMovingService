@@ -60,9 +60,12 @@ svg { display: block; }
 .skip-link:focus { transform: translateY(0); }
 
 .site-header {
-  position: relative;
-  z-index: 5;
+  position: sticky;
+  z-index: 20;
+  top: 0;
   border-bottom: 1px solid rgba(16, 42, 67, 0.1);
+  background: rgba(248, 246, 240, 0.94);
+  backdrop-filter: blur(14px);
 }
 
 .header-inner {
@@ -130,12 +133,20 @@ svg { display: block; }
 .site-footer a:hover { color: #0b6b55; }
 
 .header-account {
+  display: inline-flex;
+  width: 42px;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(16, 42, 67, 0.15);
+  border-radius: 50%;
   color: rgba(16, 42, 67, 0.78);
-  font-size: 13px;
-  font-weight: 740;
+  transition: border-color 160ms ease, color 160ms ease, background 160ms ease;
 }
 
-.header-account:hover { color: #0b6b55; }
+.header-account:hover { border-color: #0b6b55; background: rgba(11, 107, 85, 0.06); color: #0b6b55; }
+.profile-icon { width: 21px; height: 21px; }
+.header-account span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 .header-actions { display: flex; align-items: center; gap: 10px; }
 
@@ -657,12 +668,23 @@ h2 {
 .auth-card label { display: grid; gap: 7px; color: rgba(16, 42, 67, 0.8); font-size: 12px; font-weight: 750; }
 .auth-card input { min-height: 47px; border: 1px solid rgba(16, 42, 67, 0.22); border-radius: 8px; padding: 12px 13px; background: #fff; color: #102a43; }
 .auth-card .button { margin-top: 7px; }
+.auth-reset { width: fit-content; margin: -9px 0 0; padding: 0; border: 0; background: transparent; color: #0b6b55; font: inherit; font-size: 13px; font-weight: 760; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.auth-reset:disabled { cursor: wait; opacity: 0.65; }
 .auth-switch { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; margin-top: 27px; padding: 4px; border-radius: 9px; background: #e9e5da; }
 .auth-switch button { min-height: 38px; border: 0; border-radius: 6px; background: transparent; color: rgba(16, 42, 67, 0.72); font: inherit; font-size: 13px; font-weight: 800; cursor: pointer; }
 .auth-switch button.is-active { background: #f8f6f0; color: #102a43; box-shadow: 0 1px 3px rgba(16, 42, 67, 0.12); }
 .auth-google { width: 100%; margin-top: 18px !important; justify-content: center; }
 .auth-divider { display: flex; align-items: center; gap: 12px; margin: 20px 0 -7px; color: rgba(16, 42, 67, 0.58); font-size: 11px; font-weight: 750; letter-spacing: 0.05em; text-transform: uppercase; }
 .auth-divider::before, .auth-divider::after { flex: 1; height: 1px; background: rgba(16, 42, 67, 0.13); content: ""; }
+.admin-alerts { margin-top: 0; }
+.legal-page { max-width: 850px; padding-top: clamp(52px, 8vw, 90px); padding-bottom: clamp(78px, 10vw, 126px); }
+.legal-page > .eyebrow { margin-top: 42px; }
+.legal-page > h1 { max-width: 730px; margin-bottom: 27px; }
+.legal-copy { display: grid; gap: 28px; max-width: 740px; color: rgba(16, 42, 67, 0.8); font-size: 16px; line-height: 1.7; }
+.legal-copy > p { margin: 0; font-size: 18px; }
+.legal-copy section { padding-top: 24px; border-top: 1px solid rgba(16, 42, 67, 0.14); }
+.legal-copy h2 { margin: 0 0 9px; font-size: 27px; }
+.legal-copy p { margin: 0; }
 
 .account-page { padding-top: clamp(55px, 8vw, 105px); padding-bottom: clamp(76px, 10vw, 138px); }
 .account-heading { max-width: 750px; }
@@ -730,7 +752,7 @@ h2 {
   .form-topline,
   .form-footer { align-items: flex-start; flex-direction: column; }
   .form-footer .button { width: 100%; }
-  .header-account { display: none; }
+  .header-account { width: 39px; height: 39px; }
   .path-card { grid-template-columns: 28px 1fr auto; padding: 21px; }
   .verification-note { align-items: flex-start; flex-direction: column; }
   .footer-inner { align-items: flex-start; flex-direction: column; }

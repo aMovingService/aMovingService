@@ -2,6 +2,7 @@ import { initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { FieldValue, getFirestore } from "firebase-admin/firestore";
 import { defineSecret } from "firebase-functions/params";
+import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { HttpsError, onCall, onRequest } from "firebase-functions/v2/https";
 import { createHash } from "node:crypto";
 import Stripe from "stripe";
@@ -27,6 +28,17 @@ function stripeClient(secret: string) {
 
 function bookingRef(uid: string, bookingId: string) {
   return db.collection("customers").doc(uid).collection("bookingRequests").doc(bookingId);
+}
+
+async function createStaffNotification(id: string, title: string, message: string) {
+  const reference = db.collection("staffNotifications").doc(id);
+  if ((await reference.get()).exists) return;
+  await reference.set({
+    schemaVersion: 1,
+    title,
+    message,
+    createdAt: FieldValue.serverTimestamp()
+  });
 }
 
 function checkoutIntegrationIdentifier(bookingId: string) {
@@ -114,6 +126,19 @@ export const bootstrapStaffAccess = onCall({ region: REGION }, async (request) =
   await recordAccount(user, "admin");
   return { role: "admin", staff: true };
 });
+
+// The alert deliberately excludes customer contact and move details. Those
+// remain in the restricted customer records that staff can open when needed.
+export const notifyStaffOfNewQuote = onDocumentCreated(
+  { region: REGION, document: "customers/{uid}/quotes/{quoteId}" },
+  async (event) => {
+    await createStaffNotification(
+      `quote-${event.params.uid}-${event.params.quoteId}`,
+      "New quote request",
+      "A customer requested a planning call. Review the customer workspace for details."
+    );
+  }
+);
 
 export const reviewBookingAvailability = onCall({ region: REGION }, async (request) => {
   if (!request.auth || !isStaff(request)) {
@@ -279,6 +304,11 @@ export const stripeWebhook = onRequest(
         paidAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp()
       }, { merge: true });
+      await createStaffNotification(
+        `booking-paid-${firebaseUid}-${bookingId}`,
+        "Deposit paid — availability review needed",
+        "A paid booking is awaiting your availability decision."
+      );
     }
 
     if (event.type === "checkout.session.async_payment_failed") {
