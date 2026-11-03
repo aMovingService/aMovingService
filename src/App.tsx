@@ -60,6 +60,11 @@ function errorMessage(error: unknown) {
   if (code === "auth/email-already-in-use") return "An account already exists for that email. Please sign in instead.";
   if (code === "auth/invalid-credential" || code === "auth/wrong-password") return "That email or password did not match an account.";
   if (code === "auth/weak-password") return "Please choose a password with at least 8 characters.";
+  if (code === "auth/unauthorized-domain") return "This domain is not authorized in Firebase Authentication yet. Please refresh and try again.";
+  if (code === "auth/operation-not-allowed") return "Google sign-in is not enabled for this Firebase project.";
+  if (code === "auth/popup-blocked") return "Your browser blocked the Google sign-in window. Allow popups for this site and try again.";
+  if (code === "auth/popup-closed-by-user") return "Google sign-in was closed before it finished. Please try again.";
+  if (code === "auth/network-request-failed") return "Firebase could not reach the sign-in service. Check your connection and try again.";
   return "Something did not go through. Please try again.";
 }
 
@@ -170,7 +175,7 @@ function Admin() {
     }, () => setError("We could not load pending bookings."));
   }, [isStaffMember]);
 
-  async function login() { if (!auth || !googleProvider) return; try { await signInWithPopup(auth, googleProvider); } catch { setError("Sign-in could not be completed. Confirm that this domain is authorized in Firebase Authentication."); } }
+  async function login() { if (!auth || !googleProvider) return; try { await signInWithPopup(auth, googleProvider); } catch (error) { setError(errorMessage(error)); } }
   async function activateStaff() {
     if (!user || !functions) return;
     setActivating(true); setError("");
