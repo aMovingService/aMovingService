@@ -4,6 +4,11 @@
     "indexes": "firestore.indexes.json"
   },
   "auth": {
+    "authorizedDomains": [
+      "amovingservice.com",
+      "www.amovingservice.com",
+      "localhost"
+    ],
     "providers": {
       "emailPassword": true,
       "googleSignIn": {
