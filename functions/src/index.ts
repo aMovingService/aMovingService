@@ -130,13 +130,33 @@ export const bootstrapStaffAccess = onCall({ region: REGION }, async (request) =
 // The alert deliberately excludes customer contact and move details. Those
 // remain in the restricted customer records that staff can open when needed.
 export const notifyStaffOfNewQuote = onDocumentCreated(
-  { region: REGION, document: "customers/{uid}/quotes/{quoteId}" },
+  { region: REGION, retry: true, document: "customers/{uid}/quotes/{quoteId}" },
   async (event) => {
-    await createStaffNotification(
-      `quote-${event.params.uid}-${event.params.quoteId}`,
-      "New quote request",
-      "A customer requested a planning call. Review the customer workspace for details."
-    );
+    const { uid, quoteId } = event.params;
+    const title = "New quote request";
+    const message = "A customer requested a planning call. Review the customer workspace for details.";
+    const id = `quote-${uid}-${quoteId}`;
+    if (process.env.STAFF_QUOTE_EMAIL_ENABLED !== "true") {
+      await createStaffNotification(id, title, message);
+      return;
+    }
+
+    const recipient = process.env.STAFF_QUOTE_EMAIL_TO?.trim();
+    if (recipient !== "contact@amovingservice.com") {
+      throw new Error("A single staff quote recipient must be configured.");
+    }
+    const key = createHash("sha256").update(event.document).digest("hex");
+    const alert = db.collection("staffNotifications").doc(id);
+    const email = db.collection("emailOutbox").doc(key);
+    await db.runTransaction(async transaction => {
+      const [existingAlert, existingEmail] = await transaction.getAll(alert, email);
+      const now = FieldValue.serverTimestamp();
+      if (!existingAlert.exists) transaction.create(alert, { schemaVersion: 1, title, message, createdAt: now });
+      if (!existingEmail.exists) transaction.create(email, {
+        business: "amovingservice", category: "staff_quote", template: "new_quote",
+        to: recipient, status: "pending", createdAt: now, nextAttemptAt: now
+      });
+    });
   }
 );
 
@@ -333,3 +353,5 @@ export const stripeWebhook = onRequest(
     response.status(200).send("OK");
   }
 );
+
+export { processQuoteEmailQueue, quoteEmailFeedback } from "./quote-email-functions.js";
