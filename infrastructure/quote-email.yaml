@@ -1,0 +1,98 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: A Moving Service staff quote notifications
+Parameters:
+  AMovingServiceGoogleSubject:
+    Type: String
+    AllowedPattern: '[0-9]+'
+  AMovingServiceGoogleAudience:
+    Type: String
+    AllowedValues: [amovingservice-ses-email-worker]
+    Default: amovingservice-ses-email-worker
+  ConnectFeedback:
+    Type: String
+    AllowedValues: ['true', 'false']
+    Default: 'false'
+Conditions:
+  Subscribe: !Equals [!Ref ConnectFeedback, 'true']
+Resources:
+  AMovingServiceConfigurationSet:
+    Type: AWS::SES::ConfigurationSet
+    Properties:
+      Name: amovingservice-transactional
+      SendingOptions:
+        SendingEnabled: true
+      ReputationOptions:
+        ReputationMetricsEnabled: false
+  AMovingServiceEvents:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: amovingservice-ses-events
+      SignatureVersion: '2'
+  AMovingServiceTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics: [!Ref AMovingServiceEvents]
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: SesPublish
+            Effect: Allow
+            Principal: { Service: ses.amazonaws.com }
+            Action: sns:Publish
+            Resource: !Ref AMovingServiceEvents
+            Condition:
+              StringEquals:
+                AWS:SourceAccount: !Ref AWS::AccountId
+                AWS:SourceArn: !Sub arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:configuration-set/amovingservice-transactional
+  AMovingServiceEventDestination:
+    Type: AWS::SES::ConfigurationSetEventDestination
+    DependsOn: AMovingServiceTopicPolicy
+    Properties:
+      ConfigurationSetName: !Ref AMovingServiceConfigurationSet
+      EventDestination:
+        Name: sns-transactional-events
+        Enabled: true
+        MatchingEventTypes: [SEND, REJECT, BOUNCE, COMPLAINT, DELIVERY, DELIVERY_DELAY, RENDERING_FAILURE]
+        SnsDestination: { TopicARN: !Ref AMovingServiceEvents }
+  AMovingServiceEmailRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: amovingservice-ses-email-worker
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Federated: accounts.google.com }
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                accounts.google.com:sub: !Ref AMovingServiceGoogleSubject
+                accounts.google.com:aud: !Ref AMovingServiceGoogleSubject
+                accounts.google.com:oaud: !Ref AMovingServiceGoogleAudience
+      Policies:
+        - PolicyName: send-amovingservice-transactional
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: ses:SendEmail
+                Resource:
+                  - !Sub arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:identity/amovingservice.com
+                  - !Sub arn:${AWS::Partition}:ses:${AWS::Region}:${AWS::AccountId}:configuration-set/amovingservice-transactional
+                Condition:
+                  StringEquals:
+                    ses:FromAddress: noreply@amovingservice.com
+                  'ForAllValues:StringEquals':
+                    ses:Recipients:
+                      - contact@amovingservice.com
+                      - success@simulator.amazonses.com
+                      - bounce@simulator.amazonses.com
+                      - complaint@simulator.amazonses.com
+  QuoteFeedbackSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: Subscribe
+    Properties:
+      TopicArn: !Ref AMovingServiceEvents
+      Protocol: https
+      Endpoint: https://us-west2-amovingservice-web-2026.cloudfunctions.net/quoteEmailFeedback
