@@ -1,3 +1,4 @@
+import { NewsletterAdminTabs, NewsletterSubscription } from "./newsletter/Newsletter";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import {
   createUserWithEmailAndPassword,
@@ -110,7 +111,7 @@ function Header({ user }: { user: User | null }) {
 
 function HeroIllustration() { return <div className="hero-visual" aria-hidden="true"><div className="hero-grid" /><div className="sun-disc" /><svg className="hero-route" viewBox="0 0 600 520" fill="none"><path d="M12 468C89 388 113 312 187 297c76-15 103 86 194 42 75-36 81-143 192-194" stroke="currentColor" strokeDasharray="3 13" strokeLinecap="round" strokeWidth="4" /><circle cx="12" cy="468" fill="currentColor" r="8" /><circle cx="573" cy="145" fill="currentColor" r="8" /></svg><div className="box box-one"><span>01</span></div><div className="box box-two"><span>02</span></div><div className="box box-three"><span>03</span></div><div className="move-note"><RouteMark /><span>Your move,<br />mapped out.</span></div></div>; }
 
-function Footer() { return <footer className="site-footer"><div className="shell footer-inner"><div className="footer-brand"><Brand /><p>© {new Date().getFullYear()} {site.name}</p></div><div className="footer-contact"><strong>Plan your move</strong><a href={site.phoneHref}>{site.phoneDisplay}</a><a href={`mailto:${site.email}`}>{site.email}</a><span>{site.serviceArea}</span></div><nav className="footer-links" aria-label="Footer navigation"><a href="/book">Book a move</a><a href="/quote">Get a quote</a><a href="/contact">Contact</a><a href="/login">Log in</a><a href="/admin">Staff portal</a><a href="/terms">Booking terms</a><a href="/privacy">Privacy</a></nav></div></footer>; }
+function Footer() { return <footer className="site-footer"><div className="shell footer-inner"><div className="footer-brand"><Brand /><p>© {new Date().getFullYear()} {site.name}</p></div><div className="footer-contact"><strong>Plan your move</strong><a href={site.phoneHref}>{site.phoneDisplay}</a><a href={`mailto:${site.email}`}>{site.email}</a><span>{site.serviceArea}</span></div><nav className="footer-links" aria-label="Footer navigation"><a href="/book">Book a move</a><a href="/quote">Get a quote</a><a href="/contact">Contact</a><a href="/login">Log in</a><a href="/admin">Staff portal</a><a href="/newsletter">Newsletter</a><a href="/terms">Booking terms</a><a href="/privacy">Privacy</a></nav></div></footer>; }
 
 function Home({ user }: { user: User | null }) {
   return <><Header user={user} /><main id="main-content"><section className="hero shell"><div className="hero-copy"><p className="eyebrow"><RouteMark /> A considered start</p><h1>Start your move with a <em>clearer</em> plan.</h1><p className="hero-lede">Request a quote and choose a call time, or reserve your move online with a {deposit} deposit.</p><div className="hero-actions"><a className="button button-primary" href="/book">Book a move <ArrowUpRight /></a><a className="text-link" href="/quote">Get a quote <ArrowUpRight /></a></div></div><HeroIllustration /></section><section className="statement-section" id="how-it-works"><div className="shell"><div className="section-intro"><p className="eyebrow">How it works</p><h2>Choose the next step that fits your move.</h2></div><ol className="steps-grid"><li><span>01</span><h3>Share your move</h3><p>Tell us your timing, locations, and move details. We’ll save it privately to your account.</p></li><li><span>02</span><h3>Book a call</h3><p>Request a quote and select the best time for a quick planning call.</p></li><li><span>03</span><h3>Reserve online</h3><p>When you are ready, complete the two-hour deposit to start your booking.</p></li></ol></div></section><section className="pricing-section" id="pricing"><div className="shell pricing-grid"><div><p className="eyebrow">Simple starting rate</p><h2>{hourlyRate}/hour.</h2><p>Start with a two-hour minimum, reserved with a {deposit} booking deposit.</p></div><div className="pricing-card"><strong>{deposit}</strong><span>Two-hour booking deposit</span><p>Applied to your final moving bill. Fully refundable with 48+ hours’ notice; nonrefundable inside 48 hours.</p><a className="text-link" href="/book">Book your move <ArrowUpRight /></a></div></div></section><section className="details-section shell"><div className="details-art" aria-hidden="true"><div className="details-art__circle" /><div className="details-art__paper" /><span>Details<br />matter.</span></div><div className="details-copy"><p className="eyebrow">Built around your move</p><h2>Useful plans begin with useful details.</h2><p>Dates, access, distances, and the kind of help you have in mind all shape a move. Your account keeps your requests in one private place.</p><div className="detail-list"><div><span>01</span><strong>Your timing</strong><p>When the move needs to happen.</p></div><div><span>02</span><strong>Your locations</strong><p>Where the move begins and ends.</p></div><div><span>03</span><strong>Your priorities</strong><p>The details that deserve extra attention.</p></div></div></div></section><section className="faq-section"><div className="shell faq-layout"><div><p className="eyebrow eyebrow-light">Questions</p><h2>Know what you are reserving.</h2><p>We make the starting rate and booking policy clear before you pay.</p></div><div className="faq-list"><details open><summary>What is the booking deposit?<span>+</span></summary><p>The {deposit} deposit reserves the first two hours of moving time and is credited to your final moving bill.</p></details><details><summary>What is the cancellation policy?<span>+</span></summary><p>Your deposit is fully refundable with at least 48 hours’ notice. It is nonrefundable inside 48 hours of the scheduled move.</p></details><details><summary>Can I request a quote first?<span>+</span></summary><p>Yes. Share your move details and preferred call window; we’ll use your request to begin the conversation.</p></details></div></div></section><section className="quote-section"><div className="shell quote-layout"><div className="quote-intro"><p className="eyebrow eyebrow-light">Two ways to begin</p><h2>Talk first or reserve now.</h2><p>Both paths create a private customer account, so you can return to your move details later.</p></div><div className="path-actions"><a className="path-card" href="/quote"><span>01</span><h3>Get a quote</h3><p>Share details and request a call.</p><ArrowUpRight /></a><a className="path-card path-card--light" href="/book"><span>02</span><h3>Book a move</h3><p>Choose your move date and pay the {deposit} booking deposit.</p><ArrowUpRight /></a></div></div></section></main><Footer /></>;
@@ -156,13 +157,14 @@ function MovePage({ user, booking }: { user: User | null; booking: boolean }) {
   return <><Header user={user} /><main className="form-page shell" id="main-content"><a className="back-link" href="/"><span>←</span> Back home</a><div className="form-page__intro"><p className="eyebrow">{booking ? "Book a move" : "Get a quote"}</p><h1>{title}</h1><p>{description}</p>{booking && <p className="form-page__hint">Fully refundable with 48+ hours’ notice; nonrefundable inside 48 hours.</p>}{!user && <p className="form-page__hint">Already have an account? <a href={`/login?next=${booking ? "book" : "quote"}`}>Sign in</a>.</p>}</div><form className="customer-form" onSubmit={submit}><MoveFields booking={booking} data={data} setData={setData} /><AccountPassword data={data} setData={setData} user={user} /><div className="form-footer form-footer--page"><p>{booking ? `You will continue to Stripe’s secure checkout to pay the ${deposit} deposit. Payment places your move in pending availability approval; it is not an automatic confirmation.` : "We use these details to prepare your quote and call. Your account keeps them private."}</p><button className="button button-primary" disabled={saving} type="submit">{saving ? "Saving your request…" : booking ? `Continue to ${deposit} payment` : "Save request & book a call"} <ArrowUpRight /></button></div>{status && <p className="form-status form-status--page" role="alert">{status}</p>}</form></main><Footer /></>;
 }
 
-type LoginTarget = "/account" | "/book" | "/quote" | "/admin";
+type LoginTarget = "/account" | "/book" | "/quote" | "/admin" | "/newsletter";
 
 function loginTarget(): LoginTarget {
   const next = new URLSearchParams(window.location.search).get("next");
   if (next === "book") return "/book";
   if (next === "quote") return "/quote";
   if (next === "staff") return "/admin";
+  if (next === "newsletter") return "/newsletter";
   return "/account";
 }
 
@@ -241,12 +243,21 @@ function Admin() {
   const user = useUser();
   const [error, setError] = useState("");
   const [isStaffMember, setIsStaffMember] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [bookings, setBookings] = useState<StaffBooking[]>([]);
   const [alerts, setAlerts] = useState<StaffAlert[]>([]);
 
   useEffect(() => {
-    if (!user) { setIsStaffMember(false); return; }
-    void user.getIdTokenResult().then((token) => setIsStaffMember(token.claims.staff === true)).catch(() => setIsStaffMember(false));
+    let active = true;
+    setIsStaffMember(false);
+    setIsAdmin(false);
+    if (!user) return;
+    void user.getIdTokenResult().then((token) => {
+      if (!active) return;
+      setIsStaffMember(token.claims.staff === true);
+      setIsAdmin(token.claims.role === "admin");
+    }).catch(() => {});
+    return () => { active = false; };
   }, [user]);
 
   useEffect(() => {
@@ -270,7 +281,16 @@ function Admin() {
   }
   const displayDate = (booking: StaffBooking) => booking.moveDate?.toDate?.().toLocaleDateString() ?? "Move date pending";
 
-  return <><Header user={user} /><main className="admin-page" id="main-content"><div className={`admin-card${isStaffMember ? " admin-card--wide" : ""}`}><Brand /><p className="eyebrow">Staff portal</p><h1>Move approvals</h1>{!firebaseEnabled ? <p>Firebase configuration is being connected. Staff sign-in will be available shortly.</p> : !user ? <><p>Employees and administrators sign in from the shared account page.</p><a className="button button-primary" href="/login?next=staff">Log in <ArrowUpRight /></a></> : <><p>Signed in as <strong>{user.email ?? "staff member"}</strong>.</p>{!isStaffMember ? <><p>This account does not have staff access. If you are an employee, ask an administrator to add your verified email address.</p><a className="button button-outline" href="/account">Go to my account</a></> : <><section className="admin-bookings admin-alerts"><h2>Recent activity</h2>{alerts.length ? <ul className="record-list">{alerts.map((alert) => <li key={alert.id}><div><strong>{alert.title ?? "New activity"}</strong><small>{alert.message ?? "There is a new update in your move workspace."}{alert.createdAt?.toDate ? ` · ${alert.createdAt.toDate().toLocaleString()}` : ""}</small></div></li>)}</ul> : <p>New quote requests and paid bookings will appear here.</p>}</section><section className="admin-bookings"><h2>Pending availability approval</h2>{bookings.length ? <ul className="record-list">{bookings.map((booking) => <li key={booking.id}><div><strong>{booking.fullName ?? "Customer"} · {displayDate(booking)}</strong><small>{booking.origin ?? "Origin"} → {booking.destination ?? "Destination"} · {booking.arrivalWindow ?? "Arrival window pending"}</small></div><span className="admin-booking-actions"><button className="button button-small button-primary" onClick={() => review(booking, "approved")} type="button">Approve</button><button className="button button-small button-outline" onClick={() => review(booking, "declined")} type="button">Decline</button></span></li>)}</ul> : <p>No paid bookings are awaiting review.</p>}</section></>}<button className="text-button" onClick={() => auth && signOut(auth).then(() => window.location.assign("/"))} type="button">Sign out</button></>}{error && <p className="form-status form-status--dark" role="alert">{error}</p>}<a className="text-link" href="/">Return to the site <ArrowUpRight /></a></div></main><Footer /></>;
+  const moveApprovals = (
+    <><section className="admin-bookings admin-alerts"><h2>Recent activity</h2>{alerts.length ? <ul className="record-list">{alerts.map((alert) => <li key={alert.id}><div><strong>{alert.title ?? "New activity"}</strong><small>{alert.message ?? "There is a new update in your move workspace."}{alert.createdAt?.toDate ? ` · ${alert.createdAt.toDate().toLocaleString()}` : ""}</small></div></li>)}</ul> : <p>New quote requests and paid bookings will appear here.</p>}</section><section className="admin-bookings"><h2>Pending availability approval</h2>{bookings.length ? <ul className="record-list">{bookings.map((booking) => <li key={booking.id}><div><strong>{booking.fullName ?? "Customer"} · {displayDate(booking)}</strong><small>{booking.origin ?? "Origin"} → {booking.destination ?? "Destination"} · {booking.arrivalWindow ?? "Arrival window pending"}</small></div><span className="admin-booking-actions"><button className="button button-small button-primary" onClick={() => review(booking, "approved")} type="button">Approve</button><button className="button button-small button-outline" onClick={() => review(booking, "declined")} type="button">Decline</button></span></li>)}</ul> : <p>No paid bookings are awaiting review.</p>}</section></>
+  );
+  const adminContent = isAdmin && user ? (
+    <NewsletterAdminTabs user={user} region="us-west2" mainLabel="Move approvals">
+      {moveApprovals}
+    </NewsletterAdminTabs>
+  ) : moveApprovals;
+
+  return <><Header user={user} /><main className="admin-page" id="main-content"><div className={`admin-card${isStaffMember ? " admin-card--wide" : ""}`}><Brand /><p className="eyebrow">Staff portal</p><h1>Move approvals</h1>{!firebaseEnabled ? <p>Firebase configuration is being connected. Staff sign-in will be available shortly.</p> : !user ? <><p>Employees and administrators sign in from the shared account page.</p><a className="button button-primary" href="/login?next=staff">Log in <ArrowUpRight /></a></> : <><p>Signed in as <strong>{user.email ?? "staff member"}</strong>.</p>{!isStaffMember ? <><p>This account does not have staff access. If you are an employee, ask an administrator to add your verified email address.</p><a className="button button-outline" href="/account">Go to my account</a></> : adminContent}<button className="text-button" onClick={() => auth && signOut(auth).then(() => window.location.assign("/"))} type="button">Sign out</button></>}{error && <p className="form-status form-status--dark" role="alert">{error}</p>}<a className="text-link" href="/">Return to the site <ArrowUpRight /></a></div></main><Footer /></>;
 }
 
 function Legal({ user, page }: { user: User | null; page: "terms" | "privacy" }) {
@@ -282,9 +302,17 @@ function Contact({ user }: { user: User | null }) {
   return <><Header user={user} /><main className="legal-page shell contact-page" id="main-content"><p className="eyebrow">Contact A Moving Service</p><h1>Start with a conversation.</h1><p className="contact-page__lede">For move questions, booking support, or a quote request, call or email our team. We serve customers {site.serviceArea.toLowerCase()}.</p><div className="contact-options"><a href={site.phoneHref}><small>Call</small><strong>{site.phoneDisplay}</strong></a><a href={`mailto:${site.email}`}><small>Email</small><strong>{site.email}</strong></a></div><p className="form-page__hint">Business hours will be posted here soon. You can also <a href="/quote">request a quote</a> or <a href="/book">reserve a move online</a>.</p></main><Footer /></>;
 }
 
+function NewsletterPage({ user }: { user: User | null }) {
+  return <><Header user={user} /><main className="shell legal-page" id="main-content">
+    <h1>A Moving Service newsletter</h1>
+    {user ? <NewsletterSubscription user={user} region="us-west2" /> : <a className="button button-primary" href="/login?next=newsletter">Sign in to subscribe</a>}
+  </main><Footer /></>;
+}
+
 function App() {
   const user = useUser(); const path = window.location.pathname.replace(/\/+$/, "") || "/";
   if (path === "/admin") return <Admin />;
+  if (path === "/newsletter") return <NewsletterPage user={user} />;
   if (path === "/quote") return <MovePage user={user} booking={false} />;
   if (path === "/book") return <MovePage user={user} booking />;
   if (path === "/login") return <Login user={user} />;
